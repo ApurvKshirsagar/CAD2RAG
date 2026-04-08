@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CAD2RAG — Query your drawings</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="logo">
+          <span class="logo-icon">⬡</span>
+          <span class="logo-text">CAD2RAG</span>
+        </div>
+
+        <div class="upload-section">
+          <p class="section-label">Upload File</p>
+
+          <div class="file-type-toggle">
+            <button
+              class="toggle-btn active"
+              id="btn-dxf"
+              onclick="setFileType('dxf')"
+            >
+              DXF
+            </button>
+            <button
+              class="toggle-btn"
+              id="btn-pdf"
+              onclick="setFileType('pdf')"
+            >
+              PDF
+            </button>
+          </div>
+
+          <div
+            class="drop-zone"
+            id="dropZone"
+            ondrop="handleDrop(event)"
+            ondragover="handleDragOver(event)"
+            ondragleave="handleDragLeave(event)"
+            onclick="document.getElementById('fileInput').click()"
+          >
+            <div class="drop-icon">↑</div>
+            <div class="drop-text">
+              Drop your <span id="fileTypeLabel">DXF</span> here
+            </div>
+            <div class="drop-sub">or click to browse</div>
+            <input
+              type="file"
+              id="fileInput"
+              accept=".dxf"
+              hidden
+              onchange="handleFileSelect(event)"
+            />
+          </div>
+
+          <div class="file-info" id="fileInfo" style="display: none">
+            <div class="file-name" id="fileName"></div>
+            <button class="upload-btn" id="uploadBtn" onclick="uploadFile()">
+              <span id="uploadBtnText">Process File</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Session info shown after upload -->
+        <div class="session-panel" id="sessionPanel" style="display: none">
+          <p class="section-label">File Info</p>
+          <div class="session-info" id="sessionInfo"></div>
+          <button class="new-file-btn" onclick="resetApp()">+ New File</button>
+        </div>
+      </aside>
+
+      <!-- Main chat area -->
+      <main class="main">
+        <!-- Empty state -->
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">⬡</div>
+          <h2>Query your CAD & PDF files</h2>
+          <p>Upload a DXF or PDF file to start asking questions about it.</p>
+          <div class="feature-pills">
+            <span class="pill">Layer analysis</span>
+            <span class="pill">Entity counts</span>
+            <span class="pill">Geometry queries</span>
+            <span class="pill">PDF content search</span>
+          </div>
+        </div>
+
+        <!-- Chat messages -->
+        <div class="chat-area" id="chatArea" style="display: none">
+          <div class="messages" id="messages"></div>
+        </div>
+
+        <!-- Input bar -->
+        <div class="input-bar" id="inputBar" style="display: none">
+          <div class="input-wrap">
+            <textarea
+              id="questionInput"
+              placeholder="Ask something about your file..."
+              rows="1"
+              onkeydown="handleKeyDown(event)"
+              oninput="autoResize(this)"
+            ></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendQuery()">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+          <p class="input-hint">
+            Press Enter to send · Shift+Enter for new line
+          </p>
+        </div>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
