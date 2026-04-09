@@ -3,20 +3,17 @@ from pathlib import Path
 
 
 def parse_pdf(file_path: str) -> dict:
-    """
-    Extract text from a PDF file, page by page.
-    Returns structured chunks ready for Gemini context.
-    """
     doc = fitz.open(file_path)
 
+    total_pages = len(doc)  # ← get this BEFORE closing
     pages = []
     full_text = []
 
-    for page_num in range(len(doc)):
+    for page_num in range(total_pages):
         page = doc[page_num]
         text = page.get_text("text").strip()
 
-        if text:  # Skip blank pages
+        if text:
             pages.append({
                 "page_number": page_num + 1,
                 "text": text,
@@ -26,13 +23,12 @@ def parse_pdf(file_path: str) -> dict:
 
     doc.close()
 
-    # Chunk into ~2000 char pieces for Gemini context window efficiency
     chunks = _chunk_text(full_text)
 
     return {
         "metadata": {
             "filename": Path(file_path).name,
-            "total_pages": len(doc),
+            "total_pages": total_pages,          # ← use saved value
             "pages_with_text": len(pages),
             "total_chars": sum(p["char_count"] for p in pages),
         },
