@@ -170,6 +170,13 @@ Swagger docs at `http://127.0.0.1:8000/docs`
 ### 6. Open the frontend
 
 ```bash
+cd frontend
+python -m http.server 3000
+```
+
+or
+
+```bash
 open frontend/index.html
 ```
 
