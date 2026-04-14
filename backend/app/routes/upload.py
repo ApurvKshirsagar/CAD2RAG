@@ -1,4 +1,3 @@
-import shutil
 import uuid
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException
@@ -37,23 +36,24 @@ async def upload_file(file: UploadFile = File(...)):
     with open(save_path, "wb") as f:
         f.write(contents)
 
-    # 4. Parse & store based on file type
+    # 4. Parse & store
     try:
         if file_type == "dxf":
             parsed = parse_dxf(str(save_path))
             graph_summary = build_graph(file_id, parsed)
             session_data = {
                 "graph_summary": graph_summary,
-                "graph_session_id": file_id,        # ← key fix
+                "graph_session_id": file_id,
                 "metadata": parsed["metadata"],
                 "layers": parsed["layers"],
                 "entity_count": len(parsed["entities"])
             }
-        else:
+        else:  # pdf
             parsed = parse_pdf(str(save_path))
             session_data = {
                 "chunks": parsed["chunks"],
                 "full_text": parsed["full_text"],
+                "page_images": parsed["page_images"],   # ← vision data
                 "metadata": parsed["metadata"]
             }
 
