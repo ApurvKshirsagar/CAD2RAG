@@ -42,7 +42,7 @@ import base64
 
 genai.configure(api_key=settings.gemini_api_key)
 
-model = genai.GenerativeModel("gemini-2.5-flash")
+model = genai.GenerativeModel("gemini-2.5-pro")
 
 
 def query_with_context(context: str, question: str, file_type: str) -> str:
