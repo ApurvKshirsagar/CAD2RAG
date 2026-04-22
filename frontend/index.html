@@ -16,18 +16,18 @@
         </div>
 
         <div class="upload-section">
-          <p class="section-label">Upload File</p>
+          <p class="section-label">Add Files</p>
 
           <div class="file-type-toggle">
             <button
-              class="toggle-btn active"
+              class="toggle-btn"
               id="btn-dxf"
               onclick="setFileType('dxf')"
             >
               DXF
             </button>
             <button
-              class="toggle-btn"
+              class="toggle-btn active"
               id="btn-pdf"
               onclick="setFileType('pdf')"
             >
@@ -45,31 +45,44 @@
           >
             <div class="drop-icon">↑</div>
             <div class="drop-text">
-              Drop your <span id="fileTypeLabel">DXF</span> here
+              Drop <span id="fileTypeLabel">PDF</span> files here
             </div>
-            <div class="drop-sub">or click to browse</div>
+            <div class="drop-sub">or click to browse · up to 10 files</div>
             <input
               type="file"
               id="fileInput"
-              accept=".dxf"
+              accept=".pdf"
+              multiple
               hidden
               onchange="handleFileSelect(event)"
             />
           </div>
 
-          <div class="file-info" id="fileInfo" style="display: none">
-            <div class="file-name" id="fileName"></div>
-            <button class="upload-btn" id="uploadBtn" onclick="uploadFile()">
-              <span id="uploadBtnText">Process File</span>
-            </button>
+          <!-- File queue list -->
+          <div class="file-queue-wrapper">
+            <div class="file-queue" id="fileQueue">
+              <div class="queue-empty">No files added yet</div>
+            </div>
           </div>
+
+          <!-- Process button -->
+          <button
+            class="upload-btn"
+            id="processBtn"
+            onclick="processFiles()"
+            disabled
+          >
+            Process Files
+          </button>
         </div>
 
-        <!-- Session info shown after upload -->
+        <!-- Session info shown after at least 1 file processed -->
         <div class="session-panel" id="sessionPanel" style="display: none">
-          <p class="section-label">File Info</p>
+          <p class="section-label">Active Session</p>
           <div class="session-info" id="sessionInfo"></div>
-          <button class="new-file-btn" onclick="resetApp()">+ New File</button>
+          <button class="new-file-btn" onclick="resetApp()">
+            + New Session
+          </button>
         </div>
       </aside>
 
@@ -78,12 +91,15 @@
         <!-- Empty state -->
         <div class="empty-state" id="emptyState">
           <div class="empty-icon">⬡</div>
-          <h2>Query your CAD & PDF files</h2>
-          <p>Upload a DXF or PDF file to start asking questions about it.</p>
+          <h2>Query your CAD &amp; PDF files</h2>
+          <p>
+            Add one or more DXF / PDF files, then click
+            <strong>Process Files</strong> to start asking questions.
+          </p>
           <div class="feature-pills">
+            <span class="pill">Multi-file queries</span>
             <span class="pill">Layer analysis</span>
-            <span class="pill">Entity counts</span>
-            <span class="pill">Geometry queries</span>
+            <span class="pill">Room adjacency</span>
             <span class="pill">PDF content search</span>
           </div>
         </div>
@@ -98,7 +114,7 @@
           <div class="input-wrap">
             <textarea
               id="questionInput"
-              placeholder="Ask something about your file..."
+              placeholder="Ask something about your files…"
               rows="1"
               onkeydown="handleKeyDown(event)"
               oninput="autoResize(this)"
