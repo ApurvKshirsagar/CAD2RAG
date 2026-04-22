@@ -46,14 +46,24 @@ model = genai.GenerativeModel("gemini-2.5-pro")
 
 
 def query_with_context(context: str, question: str, file_type: str) -> str:
-    """For DXF and text-based PDFs — text only query."""
+    """For DXF, text-based PDFs, and combined batch context — text only query."""
     if file_type == "dxf":
         system_prompt = """You are an expert CAD drawing analyst.
 You have been given structured data extracted from a DXF CAD file including entities, layers, and geometry.
 Answer questions about the drawing accurately based on the provided data.
 When referencing specific elements, mention their layer, type, and key measurements.
 If the data doesn't contain enough information to answer, say so clearly."""
-    else:
+
+    elif file_type == "batch":
+        system_prompt = """You are an expert CAD and document analyst.
+You have been given combined data extracted from MULTIPLE files (DXF drawings and/or PDF documents).
+Each section is clearly labelled with its source filename.
+Answer questions by synthesising information across ALL provided files.
+When referencing specific information, mention which file it comes from.
+If the answer spans multiple files, combine the information clearly.
+If information is not available in any of the provided files, say so clearly."""
+
+    else:  # pdf
         system_prompt = """You are an expert document analyst.
 You have been given text extracted from a PDF document.
 Answer questions about the document accurately based on the provided text.
@@ -88,18 +98,11 @@ Answer questions accurately based on what you can see in the images.
 Be specific about locations, labels, dimensions, and annotations you can read.
 If something is not visible or unclear in the images, say so."""
 
-    # Build content parts — text first, then images
     parts = [system_prompt + f"\n\nUser question: {question}\n\nHere are the PDF pages:"]
 
-    # Cap at 5 pages to avoid token limits
-    images_to_send = page_images[:5]
-
-    for img_data in images_to_send:
+    for img_data in page_images[:5]:
         parts.append(f"\n[Page {img_data['page_number']}]")
-        parts.append({
-            "mime_type": "image/png",
-            "data": img_data["base64"]
-        })
+        parts.append({"mime_type": "image/png", "data": img_data["base64"]})
 
     try:
         response = model.generate_content(parts)
