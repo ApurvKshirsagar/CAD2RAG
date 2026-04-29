@@ -1,6 +1,6 @@
 from app.db.session_store import get_session
 from app.services.graph_builder import query_graph
-from app.services.gemini_client import query_with_context, query_with_images
+from app.services.gemini_client import query_with_context, query_with_images, query_multi_context
 
 
 def handle_query(session_id: str, question: str) -> dict:
@@ -8,145 +8,113 @@ def handle_query(session_id: str, question: str) -> dict:
 
     if not session:
         return {
-            "error": "Session not found or expired. Please upload your file(s) again.",
+            "error": "Session not found or expired. Please upload your file again.",
             "session_id": session_id,
         }
 
-    session_type = session.get("session_type", "single")
+    files = session.get("files", [])
+    if not files:
+        return {
+            "error": "No files in this session. Please upload at least one file.",
+            "session_id": session_id,
+        }
 
-    if session_type == "batch":
-        return _handle_batch_query(session_id, session, question)
-    else:
-        return _handle_single_query(session_id, session, question)
+    # Single file — original path (backward compatible)
+    if len(files) == 1:
+        return _handle_single(session_id, files[0], question)
+
+    # Multiple files — merge context
+    return _handle_multi(session_id, files, question)
 
 
-# ── Single-file (original) ───────────────────────────────────────────
-
-def _handle_single_query(session_id: str, session: dict, question: str) -> dict:
-    file_type = session["file_type"]
+def _handle_single(session_id: str, file_entry: dict, question: str) -> dict:
+    file_type = file_entry["file_type"]
+    filename = file_entry["filename"]
+    data = file_entry["data"]
 
     if file_type == "dxf":
-        graph_id = session["data"].get("graph_session_id", session_id)
+        graph_id = data.get("graph_session_id")
         context = query_graph(graph_id, question)
-        answer = query_with_context(context, question, file_type)
-    else:
-        session_data = session["data"]
-        is_image_based = session_data.get("metadata", {}).get("is_image_based", False)
+        answer = query_with_context(context, question, file_type, filename=filename)
+
+    else:  # pdf
+        is_image_based = data.get("metadata", {}).get("is_image_based", False)
         if is_image_based:
-            page_images = session_data.get("page_images", [])
-            answer = query_with_images(page_images, question)
+            page_images = data.get("page_images", [])
+            answer = query_with_images(page_images, question, filenames=[filename])
             context = f"[Image-based PDF — {len(page_images)} pages sent to Gemini vision]"
         else:
-            context = _get_pdf_context(session_data, question)
-            answer = query_with_context(context, question, file_type)
+            context = _get_pdf_context(data, question)
+            answer = query_with_context(context, question, file_type, filename=filename)
 
     return {
         "session_id": session_id,
-        "file_type": file_type,
         "question": question,
         "answer": answer,
+        "files_queried": [filename],
         "context_used": context[:300] + "..." if len(context) > 300 else context,
     }
 
 
-# ── Multi-file batch ─────────────────────────────────────────────────
+def _handle_multi(session_id: str, files: list, question: str) -> dict:
+    """Merge context from all files and send to Gemini in one call."""
+    text_sections = []       # (filename, context_str)
+    image_files = []         # (filename, page_images list)
+    files_queried = []
 
-def _handle_batch_query(session_id: str, session: dict, question: str) -> dict:
-    files = session.get("files", [])
-    if not files:
-        return {
-            "error": "No files in this batch session. Please add files first.",
-            "session_id": session_id,
-        }
+    for entry in files:
+        file_type = entry["file_type"]
+        filename = entry["filename"]
+        data = entry["data"]
+        files_queried.append(filename)
 
-    # Separate image-based PDFs from text/DXF files
-    image_files = []
-    text_contexts = []
-
-    for f in files:
-        ftype = f["file_type"]
-        fname = f["filename"]
-        fdata = f["data"]
-
-        if ftype == "dxf":
-            graph_id = fdata.get("graph_session_id")
+        if file_type == "dxf":
+            graph_id = data.get("graph_session_id")
             ctx = query_graph(graph_id, question)
-            text_contexts.append(f"=== DXF FILE: {fname} ===\n{ctx}")
+            text_sections.append((filename, f"[DXF drawing]\n{ctx}"))
 
         else:  # pdf
-            is_image_based = fdata.get("metadata", {}).get("is_image_based", False)
+            is_image_based = data.get("metadata", {}).get("is_image_based", False)
             if is_image_based:
-                for img in fdata.get("page_images", [])[:5]:
-                    image_files.append((fname, img))
+                pages = data.get("page_images", [])
+                image_files.append((filename, pages))
             else:
-                ctx = _get_pdf_context(fdata, question)
-                text_contexts.append(f"=== PDF FILE: {fname} ===\n{ctx}")
+                ctx = _get_pdf_context(data, question)
+                text_sections.append((filename, f"[PDF document]\n{ctx}"))
 
-    combined_context = "\n\n".join(text_contexts)
-    filenames = [f["filename"] for f in files]
+    # If we have image files, mix them with text via multi-modal call
+    if image_files:
+        all_page_images = []
+        for fname, pages in image_files:
+            # Tag each page with its filename so Gemini knows which file it came from
+            for p in pages[:3]:  # cap per-file to 3 pages to stay within limits
+                p_tagged = dict(p)
+                p_tagged["filename"] = fname
+                all_page_images.append(p_tagged)
 
-    # Build answer
-    if image_files and text_contexts:
-        # Mixed: answer text part first, then images
-        text_answer = query_with_context(combined_context, question, "pdf") if combined_context else ""
-        img_answer = _query_batch_images(image_files, question)
-        answer = _merge_answers(text_answer, img_answer, filenames)
-    elif image_files:
-        answer = _query_batch_images(image_files, question)
+        answer = query_with_images(
+            all_page_images, question,
+            filenames=[f for f, _ in image_files],
+            extra_text_sections=text_sections,
+        )
+        context_used = f"[Multi-file: {len(image_files)} image PDF(s) + {len(text_sections)} text source(s)]"
     else:
-        answer = query_with_context(combined_context, question, "batch")
-
-    ctx_preview = combined_context[:300] + "..." if len(combined_context) > 300 else combined_context
+        answer = query_multi_context(text_sections, question)
+        preview = " | ".join(f"{n}: {c[:100]}" for n, c in text_sections)
+        context_used = preview[:300] + "..." if len(preview) > 300 else preview
 
     return {
         "session_id": session_id,
-        "session_type": "batch",
-        "files_queried": filenames,
         "question": question,
         "answer": answer,
-        "context_used": ctx_preview,
+        "files_queried": files_queried,
+        "context_used": context_used,
     }
 
 
-# ── Helpers ──────────────────────────────────────────────────────────
-
-def _get_pdf_context(session_data: dict, question: str) -> str:
-    full_text = session_data.get("full_text", "")
-    chunks = session_data.get("chunks", [])
+def _get_pdf_context(data: dict, question: str) -> str:
+    full_text = data.get("full_text", "")
+    chunks = data.get("chunks", [])
     if len(full_text) < 8000:
         return full_text
     return "\n\n---\n\n".join(chunks[:5])
-
-
-def _query_batch_images(image_files: list, question: str) -> str:
-    """Send images from multiple files (labelled by filename) to Gemini vision."""
-    from app.services.gemini_client import model
-
-    system_prompt = (
-        "You are an expert architectural and engineering drawing analyst.\n"
-        "You are looking at scanned PDF pages from MULTIPLE files.\n"
-        "Each page is labelled with its source filename.\n"
-        "Answer the question accurately using information from all the provided pages.\n"
-        "When referencing information, mention which file it came from."
-    )
-
-    parts = [f"{system_prompt}\n\nUser question: {question}\n\nHere are the PDF pages:"]
-
-    for fname, img_data in image_files[:10]:  # cap at 10 images total across all files
-        parts.append(f"\n[File: {fname} | Page {img_data['page_number']}]")
-        parts.append({"mime_type": "image/png", "data": img_data["base64"]})
-
-    try:
-        response = model.generate_content(parts)
-        return response.text
-    except Exception as e:
-        return f"Gemini error: {str(e)}"
-
-
-def _merge_answers(text_answer: str, img_answer: str, filenames: list) -> str:
-    parts = []
-    if text_answer:
-        parts.append(f"**From text-based files:**\n{text_answer}")
-    if img_answer:
-        parts.append(f"**From image-based files:**\n{img_answer}")
-    return "\n\n".join(parts)

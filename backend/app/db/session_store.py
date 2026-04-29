@@ -3,23 +3,44 @@ import uuid
 from typing import Optional
 from app.config import settings
 
-# In-memory store: session_id -> session dict
+# In-memory store: session_id -> {files: [...], created_at}
+# Each file entry: {file_type, filename, file_id, data}
 _store: dict = {}
 
-# ── Single-file session (legacy / kept for compatibility) ────────────
+MAX_FILES_PER_SESSION = 5  # Gemini API practical limit for image-heavy PDFs
 
-def create_session(file_type: str, data: dict) -> str:
+
+def create_session() -> str:
+    """Create an empty multi-file session and return its ID."""
     session_id = str(uuid.uuid4())
     _store[session_id] = {
-        "session_type": "single",
-        "file_type": file_type,
-        "data": data,
+        "files": [],
         "created_at": time.time(),
     }
     return session_id
 
 
+def add_file_to_session(session_id: str, file_type: str, filename: str, file_id: str, data: dict) -> bool:
+    """Add a processed file to an existing session. Returns False if session missing/full."""
+    session = _get_raw(session_id)
+    if session is None:
+        return False
+    if len(session["files"]) >= MAX_FILES_PER_SESSION:
+        return False
+    session["files"].append({
+        "file_type": file_type,
+        "filename": filename,
+        "file_id": file_id,
+        "data": data,
+    })
+    return True
+
+
 def get_session(session_id: str) -> Optional[dict]:
+    return _get_raw(session_id)
+
+
+def _get_raw(session_id: str) -> Optional[dict]:
     session = _store.get(session_id)
     if not session:
         return None
@@ -29,35 +50,6 @@ def get_session(session_id: str) -> Optional[dict]:
         return None
     return session
 
-
-# ── Multi-file batch session ─────────────────────────────────────────
-
-def create_batch_session() -> str:
-    """Create an empty batch session and return its ID."""
-    session_id = str(uuid.uuid4())
-    _store[session_id] = {
-        "session_type": "batch",
-        "files": [],          # list of {file_type, filename, data, summary}
-        "created_at": time.time(),
-    }
-    return session_id
-
-
-def add_file_to_batch(session_id: str, file_type: str, filename: str, data: dict, summary: dict) -> bool:
-    """Append a processed file into an existing batch session. Returns False if not found."""
-    session = get_session(session_id)
-    if not session or session.get("session_type") != "batch":
-        return False
-    session["files"].append({
-        "file_type": file_type,
-        "filename": filename,
-        "data": data,
-        "summary": summary,
-    })
-    return True
-
-
-# ── Shared helpers ───────────────────────────────────────────────────
 
 def delete_session(session_id: str):
     _store.pop(session_id, None)
@@ -71,3 +63,7 @@ def cleanup_expired():
     ]
     for sid in expired:
         del _store[sid]
+
+
+def get_max_files() -> int:
+    return MAX_FILES_PER_SESSION
