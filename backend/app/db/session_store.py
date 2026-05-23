@@ -3,8 +3,20 @@ import uuid
 from typing import Optional
 from app.config import settings
 
-# In-memory store: session_id -> {files: [...], created_at}
-# Each file entry: {file_type, filename, file_id, data}
+# In-memory dictionary to store active sessions
+# Structure:
+# session_id -> {
+#     "files": [...],
+#     "created_at": timestamp
+# }
+#
+# Each file inside "files":
+# {
+#   "file_type": str,
+#   "filename": str,
+#   "file_id": str,
+#   "data": dict
+# }
 _store: dict = {}
 
 MAX_FILES_PER_SESSION = 5  # Gemini API practical limit for image-heavy PDFs
@@ -37,10 +49,20 @@ def add_file_to_session(session_id: str, file_type: str, filename: str, file_id:
 
 
 def get_session(session_id: str) -> Optional[dict]:
+    """
+    Public function to get session data.
+    Returns None if session doesn't exist or expired.
+    """
     return _get_raw(session_id)
 
 
 def _get_raw(session_id: str) -> Optional[dict]:
+    """
+    Internal helper function:
+    - Fetch session from memory
+    - Check expiration
+    - Auto-delete expired sessions
+    """
     session = _store.get(session_id)
     if not session:
         return None
@@ -52,10 +74,18 @@ def _get_raw(session_id: str) -> Optional[dict]:
 
 
 def delete_session(session_id: str):
+    """
+    Deletes a session manually.
+    If session doesn't exist, no error occurs.
+    """
     _store.pop(session_id, None)
 
 
 def cleanup_expired():
+    """
+    Removes all expired sessions from memory.
+    Useful for periodic cleanup jobs.
+    """
     now = time.time()
     expired = [
         sid for sid, s in _store.items()
@@ -66,4 +96,7 @@ def cleanup_expired():
 
 
 def get_max_files() -> int:
+    """
+    Returns maximum allowed files per session.
+    """
     return MAX_FILES_PER_SESSION

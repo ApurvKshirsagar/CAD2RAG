@@ -6,12 +6,27 @@ router = APIRouter()
 
 
 class ComplianceRequest(BaseModel):
+    """
+    Request body model for compliance check API.
+
+    Expected JSON:
+    {
+        "session_id": "abc123",
+        "rules": ["Rule 1", "Rule 2"]
+    }
+    """
     session_id: str
     rules: list[str]
 
 
 @router.post("/compliance")
 async def compliance_check(request: ComplianceRequest):
+    """
+    API Endpoint: POST /compliance
+
+    Runs compliance checks on files stored in a session
+    using the provided rules.
+    """
     if not request.rules:
         raise HTTPException(status_code=400, detail="No rules provided.")
     if len(request.rules) > 200:
